@@ -47,6 +47,11 @@ fun App() {
     var tab by remember { mutableStateOf(0) }
     var month by remember { mutableStateOf(YearMonth.now()) }
     var dlg by remember { mutableStateOf(false) }
+    var upd by remember { mutableStateOf<UpdateInfo?>(null) }
+    var prog by remember { mutableStateOf(-1) }
+    var err by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { Thread { upd = Updater.check(ctx) }.start() }
 
     fun setTx(l: List<Tx>) { txs = l; Store.saveTx(ctx, l) }
     fun setPay(l: List<Pay>) { pays = l; Store.savePay(ctx, l) }
@@ -104,6 +109,19 @@ fun App() {
                             }
                         }
                     }
+                    Text(
+                        "Sürüm " + Updater.currentName(ctx),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    TextButton(onClick = {
+                        msg = "Kontrol ediliyor..."
+                        Thread {
+                            val r = Updater.check(ctx)
+                            if (r != null) { upd = r; msg = "" } else msg = "Yeni sürüm bulunamadı."
+                        }.start()
+                    }) { Text("Güncellemeyi kontrol et") }
+                    if (msg.isNotEmpty()) Text(msg, style = MaterialTheme.typography.labelMedium)
                 }
                 1 -> {
                     MonthBar(month) { month = it }
@@ -157,6 +175,43 @@ fun App() {
                 }
             }
         }
+    }
+
+    upd?.let { u ->
+        AlertDialog(
+            onDismissRequest = { if (prog < 0) upd = null },
+            title = { Text("Güncelleme var") },
+            text = {
+                Column {
+                    Text("Yeni sürüm: " + u.name)
+                    if (u.notes.isNotBlank()) Text(u.notes, Modifier.padding(top = 8.dp))
+                    if (prog >= 0) {
+                        LinearProgressIndicator(
+                            progress = { prog / 100f },
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                        )
+                        Text("İndiriliyor %$prog")
+                    }
+                    if (err) Text("İndirme başarısız oldu, bağlantını kontrol edip tekrar dene.")
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = prog < 0, onClick = {
+                    err = false
+                    if (!Updater.canInstall(ctx)) {
+                        Updater.askPermission(ctx)
+                    } else {
+                        prog = 0
+                        Thread {
+                            val f = Updater.download(ctx, u.url) { p -> prog = p }
+                            prog = -1
+                            if (f != null) Updater.install(ctx, f) else err = true
+                        }.start()
+                    }
+                }) { Text("İndir ve kur") }
+            },
+            dismissButton = { TextButton(enabled = prog < 0, onClick = { upd = null }) { Text("Sonra") } }
+        )
     }
 
     if (dlg) {
