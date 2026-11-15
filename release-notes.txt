@@ -1,2 +1,4 @@
-- Giriş ve kayıt ol ekranı eklendi.
-- Özet sayfasına çıkış yap düğmesi eklendi.
+- Yeni tasarım: renkli özet kartı, kategori ikonları, durum etiketleri, koyu tema uyumu.
+- Bildirimden tek dokunuşla "Ödendi" işaretleme.
+- İşlem ve ödemeleri düzenleme / silme.
+- Ayarlar: bildirim saati, kaç gün önceden hatırlatma, aylık harcama limiti, yedekleme.

@@ -17,6 +17,7 @@ object Auth {
     }
 
     fun hasAccount(c: Context) = p(c).contains("hash")
+    fun email(c: Context): String = p(c).getString("email", "") ?: ""
     fun name(c: Context): String = p(c).getString("name", "") ?: ""
     fun isLoggedIn(c: Context) = hasAccount(c) && p(c).getBoolean("in", false)
     fun setLoggedIn(c: Context, v: Boolean) = p(c).edit().putBoolean("in", v).apply()
@@ -46,5 +47,6 @@ object Auth {
     fun reset(c: Context) {
         p(c).edit().clear().apply()
         c.getSharedPreferences("odeme", Context.MODE_PRIVATE).edit().clear().apply()
+        c.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().clear().apply()
     }
 }

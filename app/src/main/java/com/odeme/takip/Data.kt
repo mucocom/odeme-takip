@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
@@ -24,6 +25,41 @@ val CI = listOf("Maaş", "Ek gelir", "Diğer")
 
 object Store {
     private fun prefs(c: Context) = c.getSharedPreferences("odeme", Context.MODE_PRIVATE)
+
+    /** Bu ayki ödemeyi ödendi işaretler ve gider olarak kaydeder. */
+    fun markPaid(c: Context, payId: String) {
+        val ym = YearMonth.now().toString()
+        val pays = loadPay(c)
+        val p = pays.find { it.id == payId } ?: return
+        if (ym in p.paid) return
+        savePay(c, pays.map { if (it.id == payId) it.copy(paid = it.paid + ym) else it })
+        saveTx(c, loadTx(c) + Tx(newId(), false, p.amount, "Fatura", LocalDate.now().toString(), p.name, p.id))
+    }
+
+    fun exportAll(c: Context): String = JSONObject()
+        .put("app", "odeme-takip")
+        .put("tx", JSONArray(prefs(c).getString("tx", "[]")))
+        .put("pay", JSONArray(prefs(c).getString("pay", "[]")))
+        .toString()
+
+    fun importAll(c: Context, text: String): Boolean = try {
+        val o = JSONObject(text.trim())
+        val tx = o.getJSONArray("tx")
+        val pay = o.getJSONArray("pay")
+        for (i in 0 until tx.length()) {
+            val x = tx.getJSONObject(i)
+            x.getString("id"); x.getBoolean("income"); x.getDouble("amount")
+            x.getString("cat"); x.getString("date"); x.getString("note")
+        }
+        for (i in 0 until pay.length()) {
+            val x = pay.getJSONObject(i)
+            x.getString("id"); x.getString("name"); x.getDouble("amount"); x.getInt("day")
+        }
+        prefs(c).edit().putString("tx", tx.toString()).putString("pay", pay.toString()).apply()
+        true
+    } catch (e: Exception) {
+        false
+    }
 
     fun loadTx(c: Context): List<Tx> {
         val a = JSONArray(prefs(c).getString("tx", "[]"))
@@ -87,3 +123,28 @@ fun daysText(d: Int): String = when {
 fun fmt(d: Double): String = String.format(Locale("tr", "TR"), "%,.2f ₺", d)
 
 fun newId(): String = UUID.randomUUID().toString()
+
+object Prefs {
+    private fun p(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    fun hour(c: Context) = p(c).getInt("hour", 9)
+    fun setHour(c: Context, h: Int) = p(c).edit().putInt("hour", h).apply()
+    fun lead(c: Context) = p(c).getInt("lead", 3)
+    fun setLead(c: Context, d: Int) = p(c).edit().putInt("lead", d).apply()
+    fun limit(c: Context): Double = p(c).getString("limit", "0")?.toDoubleOrNull() ?: 0.0
+    fun setLimit(c: Context, v: Double) = p(c).edit().putString("limit", v.toString()).apply()
+}
+
+fun emoji(c: String): String = when (c) {
+    "Market" -> "🛒"; "Fatura" -> "🧾"; "Kira" -> "🏠"; "Ulaşım" -> "🚌"
+    "Sağlık" -> "💊"; "Eğlence" -> "🎬"; "Eğitim" -> "🎓"
+    "Maaş" -> "💼"; "Ek gelir" -> "✨"
+    else -> "📦"
+}
+
+fun trDate(s: String): String = try {
+    LocalDate.parse(s).format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale("tr")))
+} catch (e: Exception) {
+    s
+}
+
+fun numText(d: Double): String = if (d % 1.0 == 0.0) d.toLong().toString() else d.toString()
