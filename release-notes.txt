@@ -1,1 +1,2 @@
-- Uygulama içi güncelleme eklendi.
+- Giriş ve kayıt ol ekranı eklendi.
+- Özet sayfasına çıkış yap düğmesi eklendi.

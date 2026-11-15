@@ -15,6 +15,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDate
@@ -28,10 +29,18 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         Reminder.schedule(this)
+        val act = this
         setContent {
             MaterialTheme(
                 colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
-            ) { App() }
+            ) {
+                var inside by remember { mutableStateOf(Auth.isLoggedIn(act)) }
+                if (inside) {
+                    App(onLogout = { Auth.setLoggedIn(act, false); inside = false })
+                } else {
+                    AuthScreen { inside = true }
+                }
+            }
         }
     }
 }
@@ -40,7 +49,7 @@ private val GREEN = Color(0xFF16A34A)
 private val RED = Color(0xFFDC2626)
 
 @Composable
-fun App() {
+fun App(onLogout: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var txs by remember { mutableStateOf(Store.loadTx(ctx)) }
     var pays by remember { mutableStateOf(Store.loadPay(ctx)) }
@@ -85,6 +94,11 @@ fun App() {
             val mtx = txs.filter { it.date.startsWith(ms) }.sortedByDescending { it.date }
             when (tab) {
                 0 -> Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        "Merhaba, " + Auth.name(ctx),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                     MonthBar(month) { month = it }
                     val inc = mtx.filter { it.income }.sumOf { it.amount }
                     val exp = mtx.filter { !it.income }.sumOf { it.amount }
@@ -121,6 +135,7 @@ fun App() {
                             if (r != null) { upd = r; msg = "" } else msg = "Yeni sürüm bulunamadı."
                         }.start()
                     }) { Text("Güncellemeyi kontrol et") }
+                    TextButton(onClick = { onLogout() }) { Text("Çıkış yap") }
                     if (msg.isNotEmpty()) Text(msg, style = MaterialTheme.typography.labelMedium)
                 }
                 1 -> {
@@ -327,4 +342,98 @@ fun PayDialog(onDismiss: () -> Unit, onSave: (Pay) -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("İptal") } }
     )
+}
+
+@Composable
+fun AuthScreen(onDone: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var acc by remember { mutableStateOf(Auth.hasAccount(ctx)) }
+    var tab by remember { mutableStateOf(if (acc) 0 else 1) }
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    var pass2 by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf(false) }
+
+    Surface(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("💰 Ödeme Takip", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            TabRow(selectedTabIndex = tab) {
+                Tab(selected = tab == 0, onClick = { tab = 0; err = "" }, text = { Text("Giriş") })
+                Tab(selected = tab == 1, onClick = { tab = 1; err = "" }, text = { Text("Kayıt ol") })
+            }
+            Spacer(Modifier.height(16.dp))
+            if (tab == 0 && !acc) {
+                Text("Bu telefonda hesap yok. Kayıt ol sekmesinden hesap oluştur.")
+            } else if (tab == 1 && acc) {
+                Text("Bu telefonda zaten bir hesap var. Yeni hesap açmak için Giriş sekmesinden hesabı sıfırlaman gerekir.")
+            } else {
+                if (tab == 1) {
+                    OutlinedTextField(
+                        name, { name = it }, label = { Text("Ad") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                OutlinedTextField(
+                    email, { email = it }, label = { Text("E-posta") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    pass, { pass = it }, label = { Text("Şifre") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (tab == 1) {
+                    OutlinedTextField(
+                        pass2, { pass2 = it }, label = { Text("Şifre tekrar") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (err.isNotEmpty()) {
+                    Text(err, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+                }
+                Button(
+                    onClick = {
+                        if (tab == 0) {
+                            if (Auth.login(ctx, email, pass)) onDone() else err = "E-posta veya şifre hatalı."
+                        } else {
+                            when {
+                                name.isBlank() -> err = "Adını yaz."
+                                !email.contains("@") || !email.contains(".") -> err = "Geçerli bir e-posta yaz."
+                                pass.length < 6 -> err = "Şifre en az 6 karakter olmalı."
+                                pass != pass2 -> err = "Şifreler aynı değil."
+                                else -> { Auth.register(ctx, name.trim(), email, pass); onDone() }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                ) { Text(if (tab == 0) "Giriş yap" else "Kayıt ol") }
+                if (tab == 0) {
+                    TextButton(onClick = { confirm = true }) { Text("Şifremi unuttum / hesabı sıfırla") }
+                }
+            }
+        }
+    }
+
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Hesap sıfırlansın mı?") },
+            text = { Text("Hesap ve bu telefondaki tüm gelir, gider ve ödeme kayıtların silinir. Bu işlem geri alınamaz.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Auth.reset(ctx)
+                    acc = false; tab = 1; confirm = false; err = ""
+                }) { Text("Sil ve sıfırla") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Vazgeç") } }
+        )
+    }
 }
